@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 
 export default async function handler(req, res) {
-  // Allow quick “is this alive” checks
+  // Make browser checks safe
   if (req.method === "GET") {
     return res.status(200).json({ ok: true, message: "Scryer endpoint alive" });
   }
@@ -12,20 +12,16 @@ export default async function handler(req, res) {
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    // This prevents the “crash” scenario and tells you what's missing
     return res.status(500).json({
-      error: "Missing OPENAI_API_KEY in Vercel Environment Variables (Production).",
+      error:
+        "Missing OPENAI_API_KEY in Vercel Environment Variables (Production).",
     });
   }
 
   try {
-    const body = req.body || {};
-    const query = (body.query || "").trim();
-    if (!query) {
-      return res.status(400).json({ error: "Missing query" });
-    }
+    const query = (req.body?.query || "").trim();
+    if (!query) return res.status(400).json({ error: "Missing query" });
 
-    // Create client inside handler so missing key can't crash module init
     const openai = new OpenAI({ apiKey });
 
     const completion = await openai.chat.completions.create({
@@ -34,31 +30,22 @@ export default async function handler(req, res) {
         {
           role: "system",
           content:
-            "You are The Scryer inside a witchcraft app called Witchlet. " +
-            "Return JSON only in this exact shape: " +
-            '{"results":[{"title":string,"snippet":string,"url":string|null}]}. ' +
-            "Do not include any text outside JSON.",
+            "You are The Scryer inside a witchcraft app called Witchlet. Return JSON only: " +
+            '{"results":[{"title":string,"snippet":string,"url":string|null}]}',
         },
-        { role: "user", content: `User asked: "${query}"` },
+        { role: "user", content: query },
       ],
       temperature: 0.7,
     });
 
     const raw = completion.choices?.[0]?.message?.content ?? "{}";
-
-    let data;
-    try {
-      data = JSON.parse(raw);
-    } catch {
-      data = {
-        results: [{ title: "The Scryer", snippet: raw, url: null }],
-      };
-    }
+    const data = JSON.parse(raw);
 
     return res.status(200).json(data);
   } catch (err) {
-    console.error("Scryer function error:", err);
+    console.error(err);
     return res.status(500).json({ error: "Scryer backend error" });
   }
 }
+
 
